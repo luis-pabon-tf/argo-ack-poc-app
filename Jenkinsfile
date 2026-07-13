@@ -45,12 +45,12 @@ pipeline {
                         git clone https://x-access-token:${GITHUB_TOKEN}@github.com/${GITOPS_REPO}.git gitops-checkout
                         cd gitops-checkout
                         git checkout -b bump-${ZIP_KEY}
-                        sed -i "s|S3Key: .*|S3Key: ${ZIP_KEY}|" apps/sample-function/function.yaml
+                        sed -i "s|s3Key: .*|s3Key: ${ZIP_KEY}|" apps/sample-function/function.yaml
                         git config user.email "jenkins-poc@example.com"
                         git config user.name "jenkins-poc"
                         git commit -am "Bump sample-function to ${ZIP_KEY}"
                         git push origin bump-${ZIP_KEY}
-                        curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" \
+                        curl -sf -X POST -H "Authorization: token ${GITHUB_TOKEN}" \
                           -H "Accept: application/vnd.github+json" \
                           "https://api.github.com/repos/${GITOPS_REPO}/pulls" \
                           -d "{\\"title\\":\\"Bump sample-function to ${ZIP_KEY}\\",\\"head\\":\\"bump-${ZIP_KEY}\\",\\"base\\":\\"main\\"}"
