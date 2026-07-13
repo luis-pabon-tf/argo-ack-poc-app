@@ -1,6 +1,13 @@
 pipeline {
     agent any
 
+    // Jenkins runs locally and can't receive a GitHub webhook, so poll instead of
+    // waiting for a push notification. This is the local-POC substitution for what
+    // would be a webhook-triggered build in the real environment.
+    triggers {
+        pollSCM('* * * * *')
+    }
+
     environment {
         AWS_ENDPOINT_URL      = 'http://localstack:4566'
         AWS_ACCESS_KEY_ID     = 'test'
