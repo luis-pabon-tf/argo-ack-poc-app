@@ -31,6 +31,17 @@ pipeline {
                     env.ZIP_KEY = "handler-${env.GIT_SHORT_SHA}.zip"
                 }
                 sh 'zip function.zip handler.py'
+                script {
+                    // ACK's lambda-controller diffs spec against what AWS returns. S3Bucket/S3Key
+                    // are write-only on Lambda's API and never come back from DescribeFunction, so
+                    // bumping s3Key alone is invisible to the controller's reconcile diff. sha256 IS
+                    // diffable (compared against the AWS-reported CodeSha256), so it has to travel
+                    // alongside s3Key on every deploy or the CR silently never redeploys.
+                    env.ZIP_SHA256 = sh(
+                        script: 'python3 -c "import hashlib,base64; print(base64.b64encode(hashlib.sha256(open(\'function.zip\',\'rb\').read()).digest()).decode())"',
+                        returnStdout: true
+                    ).trim()
+                }
             }
         }
 
@@ -53,13 +64,14 @@ pipeline {
                         cd gitops-checkout
                         git checkout -b bump-${ZIP_KEY}
                         sed -i "s|s3Key: .*|s3Key: ${ZIP_KEY}|" apps/sample-function/function.yaml
+                        sed -i "s|sha256: .*|sha256: ${ZIP_SHA256}|" apps/sample-function/function.yaml
                         git config user.email "jenkins-poc@example.com"
                         git config user.name "jenkins-poc"
                         git commit -am "Bump sample-function to ${ZIP_KEY}"
 
                         # Safety guard: this PR auto-merges with no human review, so refuse
-                        # to proceed unless the diff is exactly the one-line s3Key bump we
-                        # expect. Anything else (a bug, a bad rebase, tampering) stops here
+                        # to proceed unless the diff is exactly the two-line s3Key+sha256 bump
+                        # we expect. Anything else (a bug, a bad rebase, tampering) stops here
                         # loudly instead of silently auto-merging.
                         CHANGED_FILES=$(git diff HEAD~1 HEAD --name-only)
                         if [ "$CHANGED_FILES" != "apps/sample-function/function.yaml" ]; then
@@ -67,7 +79,7 @@ pipeline {
                           exit 1
                         fi
                         DIFF_LINES=$(git diff HEAD~1 HEAD -- apps/sample-function/function.yaml | grep -E "^[+-]" | grep -v "^[+-][+-][+-]")
-                        if [ "$(echo "$DIFF_LINES" | wc -l)" != "2" ] || echo "$DIFF_LINES" | grep -qv "s3Key:"; then
+                        if [ "$(echo "$DIFF_LINES" | wc -l)" != "4" ] || echo "$DIFF_LINES" | grep -qvE "s3Key:|sha256:"; then
                           echo "ABORT: unexpected diff content:"
                           echo "$DIFF_LINES"
                           exit 1
