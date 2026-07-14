@@ -70,16 +70,20 @@ pipeline {
                         git commit -am "Bump sample-function to ${ZIP_KEY}"
 
                         # Safety guard: this PR auto-merges with no human review, so refuse
-                        # to proceed unless the diff is exactly the two-line s3Key+sha256 bump
-                        # we expect. Anything else (a bug, a bad rebase, tampering) stops here
-                        # loudly instead of silently auto-merging.
+                        # to proceed unless the diff is exactly the s3Key bump, optionally
+                        # with the sha256 bump alongside it (sha256 can land unchanged if the
+                        # zip content is byte-identical to the last deploy -- e.g. an unrelated
+                        # commit like this one changed GIT_SHORT_SHA/ZIP_KEY but not handler.py).
+                        # Anything else (a bug, a bad rebase, tampering) stops here loudly
+                        # instead of silently auto-merging.
                         CHANGED_FILES=$(git diff HEAD~1 HEAD --name-only)
                         if [ "$CHANGED_FILES" != "apps/sample-function/function.yaml" ]; then
                           echo "ABORT: unexpected files changed: $CHANGED_FILES"
                           exit 1
                         fi
                         DIFF_LINES=$(git diff HEAD~1 HEAD -- apps/sample-function/function.yaml | grep -E "^[+-]" | grep -v "^[+-][+-][+-]")
-                        if [ "$(echo "$DIFF_LINES" | wc -l)" != "4" ] || echo "$DIFF_LINES" | grep -qvE "s3Key:|sha256:"; then
+                        LINE_COUNT=$(echo "$DIFF_LINES" | wc -l)
+                        if { [ "$LINE_COUNT" != "2" ] && [ "$LINE_COUNT" != "4" ]; } || echo "$DIFF_LINES" | grep -qvE "s3Key:|sha256:"; then
                           echo "ABORT: unexpected diff content:"
                           echo "$DIFF_LINES"
                           exit 1
